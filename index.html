@@ -662,20 +662,14 @@
       sound.currentTime = 0;
       sound.volume = Math.min(Math.max(volume / 100, 0), 1);
 
+      triggerVisualEffect();
+
       const playPromise = sound.play();
 
       if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            requestAnimationFrame(() => {
-              triggerVisualEffect();
-            });
-          })
-          .catch(error => {
-            console.error("소리 재생 실패:", error);
-          });
-      } else {
-        triggerVisualEffect();
+        playPromise.catch(error => {
+          console.error("소리 재생 실패:", error);
+        });
       }
     }
 
