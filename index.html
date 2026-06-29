@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>랜덤으로 머리치기</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      background: #f8fafc;
+      color: #111827;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+    }
+
+    body.flash {
+      background: #fff1f2;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 460px;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: 0 20px 45px rgba(15, 23, 42, 0.12);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .container.running {
+      max-width: 520px;
+    }
+
+    .container.beep-active {
+      box-shadow:
+        0 0 35px rgba(239, 68, 68, 0.35),
+        0 20px 45px rgba(15, 23, 42, 0.12);
+      border-color: #fca5a5;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      text-align: center;
+      color: #111827;
+    }
+
+    .desc {
+      margin: 0 0 24px;
+      text-align: center;
+      color: #4b5563;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    label {
+      display: block;
+      margin-top: 16px;
+      margin-bottom: 6px;
+      font-size: 14px;
+      color: #374151;
+      font-weight: 600;
+    }
+
+    input[type="number"] {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 12px;
+      font-size: 16px;
+      outline: none;
+      background: #ffffff;
+      color: #111827;
+    }
+
+    input[type="number"]:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .row > div {
+      flex: 1;
+    }
+
+    .volume-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      accent-color: #3b82f6;
+      cursor: pointer;
+    }
+
+    .volume-value {
+      width: 48px;
+      text-align: right;
+      font-size: 14px;
+      color: #4b5563;
+      font-weight: 600;
+    }
+
+    .option-row {
+      margin-top: 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #374151;
+      font-size: 14px;
+    }
+
+    .option-row input {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    button {
+      flex: 1;
+      padding: 14px;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #startBtn {
+      background: #2563eb;
+      color: white;
+    }
+
+    #stopBtn {
+      background: #ef4444;
+      color: white;
+    }
+
+    #runningStopBtn {
+      width: 100%;
+      margin-top: 18px;
+      background: #ef4444;
+      color: white;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .visual-box {
+      margin-top: 24px;
+      min-height: 250px;
+      border-radius: 22px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+      padding: 16px;
+    }
+
+    .running .visual-box {
+      margin-top: 0;
+      min-height: 360px;
+    }
+
+    .main-image {
+      width: 100%;
+      max-width: 300px;
+      max-height: 220px;
+      object-fit: contain;
+      z-index: 2;
+      position: relative;
+      border-radius: 18px;
+    }
+
+    .running .main-image {
+      max-width: 390px;
+      max-height: 320px;
+    }
+
+    .main-image.beep-img-active {
+      transform: scale(1.05);
+      filter: drop-shadow(0 0 24px rgba(239, 68, 68, 0.65));
+    }
+
+    .beep-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(239, 68, 68, 0.16);
+      opacity: 0;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .beep-overlay.active {
+      opacity: 1;
+    }
+
+    .wave {
+      position: absolute;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      border: 4px solid rgba(239, 68, 68, 0.7);
+      opacity: 0;
+      transform: scale(0.4);
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    .wave.active {
+      animation: wavePulse 0.5s ease-out;
+    }
+
+    @keyframes wavePulse {
+      0% {
+        opacity: 0.95;
+        transform: scale(0.4);
+      }
+      100% {
+        opacity: 0;
+        transform: scale(2.7);
+      }
+    }
+
+    .beep-text {
+      position: absolute;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 8px 16px;
+      border-radius: 999px;
+      background: #ef4444;
+      color: white;
+      font-size: 14px;
+      font-weight: bold;
+      opacity: 0;
+      z-index: 4;
+      pointer-events: none;
+    }
+
+    .beep-text.active {
+      opacity: 1;
+    }
+
+    .status {
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 14px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #374151;
+      text-align: center;
+    }
+
+    .progress-wrap {
+      margin-top: 16px;
+      width: 100%;
+      height: 10px;
+      background: #e5e7eb;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      background: #2563eb;
+      transition: width 0.1s linear;
+    }
+
+    .warning {
+      margin-top: 16px;
+      color: #92400e;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    .setup-view {
+      display: block;
+    }
+
+    .running-view {
+      display: none;
+    }
+
+    .container.running .setup-view {
+      display: none;
+    }
+
+    .container.running .running-view {
+      display: block;
+    }
+
+    .running-info {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+
+    .mode-badge {
+      display: none;
+      margin-bottom: 14px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: #111827;
+      color: #ffffff;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
+    }
+
+    .mode-badge.active {
+      display: block;
+    }
+
+    .info-card {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .info-label {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .info-value {
+      font-size: 26px;
+      color: #111827;
+      font-weight: 800;
+    }
+  </style>
+</head>
+
+<body>
+  <audio id="beepAudio" src="./Beep.m4a" preload="auto"></audio>
+
+  <div class="container" id="container">
+    <div class="setup-view" id="setupView">
+      <h1>랜덤으로 머리치기</h1>
+
+      <p class="desc">
+        신호 당 최소 간격은 3초입니다.<br />
+        3초 간격으로 머리치기...가능하시죠?
+      </p>
+
+      <div class="row">
+        <div>
+          <label for="startSec">시작 시간 (초)</label>
+          <input id="startSec" type="number" min="0" step="1" value="5" />
+        </div>
+
+        <div>
+          <label for="endSec">종료 시간 (초)</label>
+          <input id="endSec" type="number" min="1" step="1" value="60" />
+        </div>
+      </div>
+
+      <label for="count">머리치기 횟수</label>
+      <input id="count" type="number" min="1" step="1" value="10" />
+
+      <label for="volume">볼륨</label>
+      <div class="volume-row">
+        <input id="volume" type="range" min="0" max="100" step="1" value="100" />
+        <div class="volume-value" id="volumeValue">100%</div>
+      </div>
+
+      <div class="option-row">
+        <input id="infiniteMode" type="checkbox" />
+        <label for="infiniteMode" style="margin: 0;">무한 반복 모드</label>
+      </div>
+
+      <div class="buttons">
+        <button id="startBtn">뽑아 칼</button>
+      </div>
+
+      <div class="visual-box">
+        <div class="beep-overlay" id="setupBeepOverlay"></div>
+        <img class="main-image" src="./stand.jpg" alt="stand image" />
+      </div>
+
+      <div class="status" id="status">
+        대기 중입니다.
+      </div>
+
+      <div class="progress-wrap">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+    </div>
+
+    <div class="running-view" id="runningView">
+      <div class="mode-badge" id="modeBadge">∞ 무한 반복 모드 ON</div>
+
+      <div class="visual-box">
+        <div class="beep-overlay" id="beepOverlay"></div>
+        <div class="wave" id="wave"></div>
+        <img id="mainImage" class="main-image" src="./stand.jpg" alt="main image" />
+        <div class="beep-text" id="beepText">BEEP</div>
+      </div>
+
+      <div class="running-info">
+        <div class="info-card">
+          <div class="info-label">머리치기 횟수</div>
+          <div class="info-value" id="runCountText">0번</div>
+        </div>
+
+        <div class="info-card">
+          <div class="info-label">경과 시간</div>
+          <div class="info-value" id="secondsText">0.0초</div>
+        </div>
+      </div>
+
+      <button id="runningStopBtn">금헌</button>
+    </div>
+  </div>
+
+  <script>
+    const MIN_GAP_SEC = 3;
+    const AUDIO_POOL_SIZE = 8;
+    const STAND_IMAGE = "./stand.jpg";
+    const MOVE_GIF = "./move.gif";
+
+    let timers = [];
+    let scheduleTimes = [];
+    let startedAt = 0;
+    let cycleStartedAt = 0;
+    let beepedCount = 0;
+    let cycleBeepedCount = 0;
+    let cycleCount = 0;
+    let statusInterval = null;
+    let isRunning = false;
+    let infiniteMode = false;
+    let effectTimer = null;
+
+    let audioPool = [];
+    let audioPoolIndex = 0;
+
+    const beepAudio = document.getElementById("beepAudio");
+    const container = document.getElementById("container");
+
+    const startBtn = document.getElementById("startBtn");
+    const runningStopBtn = document.getElementById("runningStopBtn");
+
+    const statusBox = document.getElementById("status");
+    const progressBar = document.getElementById("progressBar");
+
+    const volumeSlider = document.getElementById("volume");
+    const volumeValue = document.getElementById("volumeValue");
+    const infiniteModeCheckbox = document.getElementById("infiniteMode");
+
+    const mainImage = document.getElementById("mainImage");
+    const wave = document.getElementById("wave");
+    const beepOverlay = document.getElementById("beepOverlay");
+    const beepText = document.getElementById("beepText");
+
+    const runCountText = document.getElementById("runCountText");
+    const secondsText = document.getElementById("secondsText");
+    const modeBadge = document.getElementById("modeBadge");
+
+    startBtn.addEventListener("click", startRandomBeep);
+    runningStopBtn.addEventListener("click", () => stopRandomBeep(true));
+
+    volumeSlider.addEventListener("input", () => {
+      volumeValue.textContent = `${volumeSlider.value}%`;
+    });
+
+    async function startRandomBeep() {
+      stopRandomBeep(false);
+
+      const startSec = Number(document.getElementById("startSec").value);
+      const endSec = Number(document.getElementById("endSec").value);
+      const count = Number(document.getElementById("count").value);
+      const volume = Number(volumeSlider.value);
+
+      infiniteMode = infiniteModeCheckbox.checked;
+
+      if (!validateInputs(startSec, endSec, count, volume)) {
+        return;
+      }
+
+      const audioReady = await prepareAudioPool(volume);
+
+      if (!audioReady) {
+        alert(
+          "Beep.m4a 파일을 재생할 수 없습니다.\n\n" +
+          "1. index.html과 Beep.m4a가 같은 폴더에 있는지 확인\n" +
+          "2. 파일 이름이 정확히 Beep.m4a인지 확인\n" +
+          "3. 가능하면 크롬에서 실행"
+        );
+        return;
+      }
+
+      isRunning = true;
+      startedAt = performance.now();
+      beepedCount = 0;
+      cycleCount = 0;
+
+      container.classList.add("running");
+
+      if (infiniteMode) {
+        modeBadge.classList.add("active");
+      } else {
+        modeBadge.classList.remove("active");
+      }
+
+      mainImage.src = STAND_IMAGE;
+      runCountText.textContent = "0번";
+      secondsText.textContent = "0.0초";
+
+      runCycle(startSec, endSec, count);
+    }
+
+    function validateInputs(startSec, endSec, count, volume) {
+      if (!Number.isFinite(startSec) || !Number.isFinite(endSec) || !Number.isFinite(count)) {
+        alert("값을 올바르게 입력해주세요.");
+        return false;
+      }
+
+      if (startSec < 0) {
+        alert("시작 시간은 0초 이상이어야 합니다.");
+        return false;
+      }
+
+      if (endSec <= startSec) {
+        alert("종료 시간은 시작 시간보다 커야 합니다.");
+        return false;
+      }
+
+      if (count < 1) {
+        alert("횟수는 1회 이상이어야 합니다.");
+        return false;
+      }
+
+      if (volume < 0 || volume > 100) {
+        alert("볼륨은 0부터 100 사이여야 합니다.");
+        return false;
+      }
+
+      const rangeLength = endSec - startSec;
+      const requiredLength = (count - 1) * MIN_GAP_SEC;
+
+      if (rangeLength < requiredLength) {
+        alert(
+          `현재 시간 범위에서는 ${count}번의 삐 소리를 ${MIN_GAP_SEC}초 간격으로 배치할 수 없습니다.\n\n` +
+          `필요한 최소 시간 범위: ${requiredLength}초\n` +
+          `현재 시간 범위: ${rangeLength}초\n\n` +
+          `횟수를 줄이거나 종료 시간을 늘려주세요.`
+        );
+        return false;
+      }
+
+      return true;
+    }
+
+    async function prepareAudioPool(volume) {
+      try {
+        const volumeValue = Math.min(Math.max(volume / 100, 0), 1);
+
+        beepAudio.volume = volumeValue;
+        beepAudio.currentTime = 0;
+        beepAudio.muted = true;
+        await beepAudio.play();
+        beepAudio.pause();
+        beepAudio.currentTime = 0;
+        beepAudio.muted = false;
+
+        audioPool = [];
+
+        for (let i = 0; i < AUDIO_POOL_SIZE; i++) {
+          const sound = new Audio("./Beep.m4a");
+          sound.preload = "auto";
+          sound.volume = volumeValue;
+          sound.load();
+          audioPool.push(sound);
+        }
+
+        audioPoolIndex = 0;
+        return true;
+      } catch (error) {
+        console.error("오디오 준비 실패:", error);
+        return false;
+      }
+    }
+
+    function runCycle(startSec, endSec, count) {
+      if (!isRunning) return;
+
+      clearCurrentTimers();
+
+      cycleCount++;
+      cycleBeepedCount = 0;
+      cycleStartedAt = performance.now();
+
+      scheduleTimes = makeRandomScheduleWithGap(startSec, endSec, count, MIN_GAP_SEC);
+
+      scheduleTimes.forEach((time) => {
+        const timer = setTimeout(() => {
+          if (!isRunning) return;
+
+          const volume = Number(volumeSlider.value);
+
+          playBeepThenVisual(volume);
+
+          beepedCount++;
+          cycleBeepedCount++;
+          runCountText.textContent = `${beepedCount}회`;
+        }, time * 1000);
+
+        timers.push(timer);
+      });
+
+      const endTimer = setTimeout(() => {
+        if (!isRunning) return;
+
+        if (infiniteMode) {
+          runCycle(startSec, endSec, count);
+        } else {
+          finishTimer();
+        }
+      }, (endSec + 0.5) * 1000);
+
+      timers.push(endTimer);
+
+      if (statusInterval) {
+        clearInterval(statusInterval);
+      }
+
+      statusInterval = setInterval(() => {
+        updateRunningView();
+      }, 100);
+    }
+
+    function makeRandomScheduleWithGap(startSec, endSec, count, minGapSec) {
+      if (count === 1) {
+        return [randomBetween(startSec, endSec)];
+      }
+
+      const availableExtra = (endSec - startSec) - (count - 1) * minGapSec;
+      const randomPoints = [];
+
+      for (let i = 0; i < count; i++) {
+        randomPoints.push(Math.random() * availableExtra);
+      }
+
+      randomPoints.sort((a, b) => a - b);
+
+      return randomPoints.map((point, index) => {
+        return startSec + point + index * minGapSec;
+      });
+    }
+
+    function randomBetween(min, max) {
+      return min + Math.random() * (max - min);
+    }
+
+    function playBeepThenVisual(volume) {
+      const volumeValue = Math.min(Math.max(volume / 100, 0), 1);
+      const sound = audioPool[audioPoolIndex];
+
+      audioPoolIndex = (audioPoolIndex + 1) % audioPool.length;
+
+      if (!sound) return;
+
+      sound.pause();
+      sound.currentTime = 0;
+      sound.volume = volumeValue;
+
+      sound.play()
+        .then(() => {
+          requestAnimationFrame(() => {
+            triggerVisualEffect();
+          });
+        })
+        .catch(error => {
+          console.error("Beep 재생 실패:", error);
+        });
+    }
+
+    function triggerVisualEffect() {
+      if (effectTimer) {
+        clearTimeout(effectTimer);
+        effectTimer = null;
+      }
+
+      document.body.classList.remove("flash");
+      container.classList.remove("beep-active");
+      mainImage.classList.remove("beep-img-active");
+      wave.classList.remove("active");
+      beepOverlay.classList.remove("active");
+      beepText.classList.remove("active");
+
+      void document.body.offsetWidth;
+
+      mainImage.src = `${MOVE_GIF}?t=${Date.now()}`;
+      document.body.classList.add("flash");
+      container.classList.add("beep-active");
+      mainImage.classList.add("beep-img-active");
+      wave.classList.add("active");
+      beepOverlay.classList.add("active");
+      beepText.classList.add("active");
+
+      effectTimer = setTimeout(() => {
+        document.body.classList.remove("flash");
+        container.classList.remove("beep-active");
+        mainImage.classList.remove("beep-img-active");
+        wave.classList.remove("active");
+        beepOverlay.classList.remove("active");
+        beepText.classList.remove("active");
+        mainImage.src = STAND_IMAGE;
+      }, 700);
+    }
+
+    function updateRunningView() {
+      if (!isRunning) return;
+
+      const totalElapsed = (performance.now() - startedAt) / 1000;
+
+      runCountText.textContent = `${beepedCount}번`;
+      secondsText.textContent = `${totalElapsed.toFixed(1)}초`;
+    }
+
+    function finishTimer() {
+      isRunning = false;
+
+      clearCurrentTimers();
+
+      if (statusInterval) {
+        clearInterval(statusInterval);
+        statusInterval = null;
+      }
+
+      runCountText.textContent = `${beepedCount}번`;
+
+      setTimeout(() => {
+        resetToSetupView("고생하셨습니다.");
+      }, 700);
+    }
+
+    function stopRandomBeep(showMessage = true) {
+      isRunning = false;
+
+      clearCurrentTimers();
+
+      if (effectTimer) {
+        clearTimeout(effectTimer);
+        effectTimer = null;
+      }
+
+      if (statusInterval) {
+        clearInterval(statusInterval);
+        statusInterval = null;
+      }
+
+      beepAudio.pause();
+      beepAudio.currentTime = 0;
+
+      audioPool.forEach(sound => {
+        sound.pause();
+        sound.currentTime = 0;
+      });
+
+      document.body.classList.remove("flash");
+      container.classList.remove("beep-active");
+      mainImage.classList.remove("beep-img-active");
+      wave.classList.remove("active");
+      beepOverlay.classList.remove("active");
+      beepText.classList.remove("active");
+      mainImage.src = STAND_IMAGE;
+
+      if (showMessage) {
+        resetToSetupView("뽑아칼 했으면 끝까지 하셔야죠.");
+      }
+    }
+
+    function resetToSetupView(message) {
+      container.classList.remove("running");
+      modeBadge.classList.remove("active");
+
+      mainImage.src = STAND_IMAGE;
+
+      statusBox.innerHTML = message;
+      progressBar.style.width = "0%";
+    }
+
+    function clearCurrentTimers() {
+      timers.forEach(timer => clearTimeout(timer));
+      timers = [];
+    }
+  </script>
+</body>
+</html>
