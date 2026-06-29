@@ -455,6 +455,7 @@
     let isRunning = false;
     let infiniteMode = false;
     let effectTimer = null;
+    let audioUnlocked = false;
 
     const sound = document.getElementById("sound");
     const container = document.getElementById("container");
@@ -500,12 +501,13 @@
         return;
       }
 
-      const audioReady = await prepareSound(volume);
+      const audioReady = await unlockSoundOnUserClick(volume);
 
       if (!audioReady) {
         alert(
           "Beep.m4a 파일을 재생할 수 없습니다.\n\n" +
-          "index.html과 Beep.m4a가 같은 폴더에 있는지 확인해주세요."
+          "index.html과 Beep.m4a가 같은 폴더에 있는지 확인해주세요.\n" +
+          "모바일에서는 무음 모드도 확인해주세요."
         );
         return;
       }
@@ -572,17 +574,67 @@
       return true;
     }
 
-    async function prepareSound(volume) {
+    async function unlockSoundOnUserClick(volume) {
       try {
-        sound.volume = Math.min(Math.max(volume / 100, 0), 1);
+        const realVolume = Math.min(Math.max(volume / 100, 0), 1);
+
+        /*
+          모바일 브라우저 핵심:
+          Start 버튼 클릭 직후, 사용자 제스처 안에서 실제 play()를 한 번 호출해야 함.
+          기존 코드의 sound.load()만으로는 모바일에서 나중에 setTimeout 안의 play()가 막힐 수 있음.
+        */
         sound.pause();
         sound.currentTime = 0;
-        sound.load();
+        sound.volume = realVolume;
+        sound.muted = true;
 
+        const playPromise = sound.play();
+
+        if (playPromise !== undefined) {
+          await playPromise;
+        }
+
+        sound.pause();
+        sound.currentTime = 0;
+        sound.muted = false;
+        sound.volume = realVolume;
+
+        audioUnlocked = true;
         return true;
       } catch (error) {
-        console.error("오디오 준비 실패:", error);
-        return false;
+        console.error("오디오 잠금 해제 실패:", error);
+
+        try {
+          /*
+            일부 모바일 브라우저에서 muted play가 잠금 해제로 인정되지 않을 때를 위한 fallback.
+            아주 짧게 실제 볼륨으로 play를 시도함.
+            이 경우 Start를 누르는 순간 아주 짧은 소리가 날 수 있음.
+          */
+          const realVolume = Math.min(Math.max(volume / 100, 0), 1);
+
+          sound.pause();
+          sound.currentTime = 0;
+          sound.muted = false;
+          sound.volume = realVolume;
+
+          const retryPromise = sound.play();
+
+          if (retryPromise !== undefined) {
+            await retryPromise;
+          }
+
+          setTimeout(() => {
+            sound.pause();
+            sound.currentTime = 0;
+          }, 80);
+
+          audioUnlocked = true;
+          return true;
+        } catch (retryError) {
+          console.error("오디오 fallback 실패:", retryError);
+          audioUnlocked = false;
+          return false;
+        }
       }
     }
 
@@ -660,6 +712,7 @@
     function playSoundThenVisual(volume) {
       sound.pause();
       sound.currentTime = 0;
+      sound.muted = false;
       sound.volume = Math.min(Math.max(volume / 100, 0), 1);
 
       triggerVisualEffect();
@@ -669,6 +722,12 @@
       if (playPromise !== undefined) {
         playPromise.catch(error => {
           console.error("소리 재생 실패:", error);
+
+          /*
+            혹시 모바일에서 unlock이 풀리지 않았을 때,
+            효과는 계속 보이게 두고 소리 실패만 로그로 남김.
+          */
+          audioUnlocked = false;
         });
       }
     }
@@ -750,6 +809,7 @@
 
       sound.pause();
       sound.currentTime = 0;
+      sound.muted = false;
 
       document.body.classList.remove("flash");
       container.classList.remove("beep-active");
