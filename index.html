@@ -364,8 +364,8 @@
       <h1>랜덤으로 머리치기</h1>
 
       <p class="desc">
-        신호 당 최소 간격은 2초입니다.<br />
-        2초 간격으로 머리치기...가능하시죠?
+        신호 당 최소 간격을 직접 조절할 수 있습니다.<br />
+        설정한 간격으로 머리치기...가능하시죠?
       </p>
 
       <div class="row">
@@ -380,8 +380,17 @@
         </div>
       </div>
 
-      <label for="count">머리치기 횟수</label>
-      <input id="count" type="number" min="1" step="1" value="10" />
+      <div class="row">
+        <div>
+          <label for="count">머리치기 횟수</label>
+          <input id="count" type="number" min="1" step="1" value="10" />
+        </div>
+
+        <div>
+          <label for="minGap">최소 간격 (초)</label>
+          <input id="minGap" type="number" min="0.1" step="0.1" value="2" />
+        </div>
+      </div>
 
       <label for="volume">볼륨</label>
       <div class="volume-row">
@@ -438,7 +447,7 @@
   </div>
 
   <script>
-    const MIN_GAP_SEC = 2;
+    let MIN_GAP_SEC = 2;
     const STAND_IMAGE = "./stand.jpg";
     const MOVE_GIF = "./move.gif";
     const SOUND_URL = "./Beep.m4a";
@@ -591,9 +600,17 @@
       const startSec = Number(document.getElementById("startSec").value);
       const endSec = Number(document.getElementById("endSec").value);
       const count = Number(document.getElementById("count").value);
+      const minGap = Number(document.getElementById("minGap").value);
       const volume = Number(volumeSlider.value);
 
       infiniteMode = infiniteModeCheckbox.checked;
+
+      if (!Number.isFinite(minGap) || minGap <= 0) {
+        alert("최소 간격은 0보다 큰 값이어야 합니다.");
+        return;
+      }
+
+      MIN_GAP_SEC = minGap;
 
       if (!validateInputs(startSec, endSec, count, volume)) {
         return;
