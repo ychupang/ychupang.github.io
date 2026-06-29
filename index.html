@@ -155,11 +155,6 @@
       color: white;
     }
 
-    #stopBtn {
-      background: #ef4444;
-      color: white;
-    }
-
     #runningStopBtn {
       width: 100%;
       margin-top: 18px;
@@ -299,18 +294,6 @@
       transition: width 0.1s linear;
     }
 
-    .warning {
-      margin-top: 16px;
-      color: #92400e;
-      background: #fffbeb;
-      border: 1px solid #fde68a;
-      border-radius: 12px;
-      padding: 12px;
-      font-size: 13px;
-      line-height: 1.5;
-      text-align: center;
-    }
-
     .setup-view {
       display: block;
     }
@@ -326,14 +309,6 @@
     .container.running .running-view {
       display: block;
     }
-
-    .running-info {
-      margin-top: 18px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-
 
     .mode-badge {
       display: none;
@@ -351,6 +326,13 @@
 
     .mode-badge.active {
       display: block;
+    }
+
+    .running-info {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
     }
 
     .info-card {
@@ -377,15 +359,15 @@
 </head>
 
 <body>
-  <audio id="beepAudio" src="./Beep.m4a" preload="auto"></audio>
+  <audio id="sound" src="./Beep.m4a" preload="auto" playsinline></audio>
 
   <div class="container" id="container">
     <div class="setup-view" id="setupView">
       <h1>랜덤으로 머리치기</h1>
 
       <p class="desc">
-        신호 당 최소 간격은 3초입니다.<br />
-        3초 간격으로 머리치기...가능하시죠?
+        신호 당 최소 간격은 2초입니다.<br />
+        2초 간격으로 머리치기...가능하시죠?
       </p>
 
       <div class="row">
@@ -419,7 +401,6 @@
       </div>
 
       <div class="visual-box">
-        <div class="beep-overlay" id="setupBeepOverlay"></div>
         <img class="main-image" src="./stand.jpg" alt="stand image" />
       </div>
 
@@ -449,7 +430,7 @@
         </div>
 
         <div class="info-card">
-          <div class="info-label">경과 시간</div>
+          <div class="info-label">초</div>
           <div class="info-value" id="secondsText">0.0초</div>
         </div>
       </div>
@@ -459,8 +440,7 @@
   </div>
 
   <script>
-    const MIN_GAP_SEC = 3;
-    const AUDIO_POOL_SIZE = 8;
+    const MIN_GAP_SEC = 2;
     const STAND_IMAGE = "./stand.jpg";
     const MOVE_GIF = "./move.gif";
 
@@ -476,10 +456,7 @@
     let infiniteMode = false;
     let effectTimer = null;
 
-    let audioPool = [];
-    let audioPoolIndex = 0;
-
-    const beepAudio = document.getElementById("beepAudio");
+    const sound = document.getElementById("sound");
     const container = document.getElementById("container");
 
     const startBtn = document.getElementById("startBtn");
@@ -506,6 +483,7 @@
 
     volumeSlider.addEventListener("input", () => {
       volumeValue.textContent = `${volumeSlider.value}%`;
+      sound.volume = Number(volumeSlider.value) / 100;
     });
 
     async function startRandomBeep() {
@@ -522,14 +500,12 @@
         return;
       }
 
-      const audioReady = await prepareAudioPool(volume);
+      const audioReady = await prepareSound(volume);
 
       if (!audioReady) {
         alert(
           "Beep.m4a 파일을 재생할 수 없습니다.\n\n" +
-          "1. index.html과 Beep.m4a가 같은 폴더에 있는지 확인\n" +
-          "2. 파일 이름이 정확히 Beep.m4a인지 확인\n" +
-          "3. 가능하면 크롬에서 실행"
+          "index.html과 Beep.m4a가 같은 폴더에 있는지 확인해주세요."
         );
         return;
       }
@@ -585,7 +561,7 @@
 
       if (rangeLength < requiredLength) {
         alert(
-          `현재 시간 범위에서는 ${count}번의 삐 소리를 ${MIN_GAP_SEC}초 간격으로 배치할 수 없습니다.\n\n` +
+          `현재 시간 범위에서는 ${count}번의 신호를 ${MIN_GAP_SEC}초 간격으로 배치할 수 없습니다.\n\n` +
           `필요한 최소 시간 범위: ${requiredLength}초\n` +
           `현재 시간 범위: ${rangeLength}초\n\n` +
           `횟수를 줄이거나 종료 시간을 늘려주세요.`
@@ -596,29 +572,13 @@
       return true;
     }
 
-    async function prepareAudioPool(volume) {
+    async function prepareSound(volume) {
       try {
-        const volumeValue = Math.min(Math.max(volume / 100, 0), 1);
+        sound.volume = Math.min(Math.max(volume / 100, 0), 1);
+        sound.pause();
+        sound.currentTime = 0;
+        sound.load();
 
-        beepAudio.volume = volumeValue;
-        beepAudio.currentTime = 0;
-        beepAudio.muted = true;
-        await beepAudio.play();
-        beepAudio.pause();
-        beepAudio.currentTime = 0;
-        beepAudio.muted = false;
-
-        audioPool = [];
-
-        for (let i = 0; i < AUDIO_POOL_SIZE; i++) {
-          const sound = new Audio("./Beep.m4a");
-          sound.preload = "auto";
-          sound.volume = volumeValue;
-          sound.load();
-          audioPool.push(sound);
-        }
-
-        audioPoolIndex = 0;
         return true;
       } catch (error) {
         console.error("오디오 준비 실패:", error);
@@ -643,11 +603,11 @@
 
           const volume = Number(volumeSlider.value);
 
-          playBeepThenVisual(volume);
+          playSoundThenVisual(volume);
 
           beepedCount++;
           cycleBeepedCount++;
-          runCountText.textContent = `${beepedCount}회`;
+          runCountText.textContent = `${beepedCount}번`;
         }, time * 1000);
 
         timers.push(timer);
@@ -697,27 +657,26 @@
       return min + Math.random() * (max - min);
     }
 
-    function playBeepThenVisual(volume) {
-      const volumeValue = Math.min(Math.max(volume / 100, 0), 1);
-      const sound = audioPool[audioPoolIndex];
-
-      audioPoolIndex = (audioPoolIndex + 1) % audioPool.length;
-
-      if (!sound) return;
-
+    function playSoundThenVisual(volume) {
       sound.pause();
       sound.currentTime = 0;
-      sound.volume = volumeValue;
+      sound.volume = Math.min(Math.max(volume / 100, 0), 1);
 
-      sound.play()
-        .then(() => {
-          requestAnimationFrame(() => {
-            triggerVisualEffect();
+      const playPromise = sound.play();
+
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            requestAnimationFrame(() => {
+              triggerVisualEffect();
+            });
+          })
+          .catch(error => {
+            console.error("소리 재생 실패:", error);
           });
-        })
-        .catch(error => {
-          console.error("Beep 재생 실패:", error);
-        });
+      } else {
+        triggerVisualEffect();
+      }
     }
 
     function triggerVisualEffect() {
@@ -776,7 +735,7 @@
       runCountText.textContent = `${beepedCount}번`;
 
       setTimeout(() => {
-        resetToSetupView("고생하셨습니다.");
+        resetToSetupView("꽂아 칼");
       }, 700);
     }
 
@@ -795,13 +754,8 @@
         statusInterval = null;
       }
 
-      beepAudio.pause();
-      beepAudio.currentTime = 0;
-
-      audioPool.forEach(sound => {
-        sound.pause();
-        sound.currentTime = 0;
-      });
+      sound.pause();
+      sound.currentTime = 0;
 
       document.body.classList.remove("flash");
       container.classList.remove("beep-active");
