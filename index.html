@@ -578,28 +578,31 @@
       try {
         const realVolume = Math.min(Math.max(volume / 100, 0), 1);
       
-        // 모바일(특히 iOS): "음소거 안 된" play()를 사용자 제스처 안에서
-        // 한 번 호출해야 이후 setTimeout 안의 play()가 차단되지 않음.
-        sound.pause();
-        sound.currentTime = 0;
-        sound.muted = false;        // ← 핵심: 여기서 muted=true 면 잠금 해제 안 됨
+        sound.muted = false;        // 음소거 없이
         sound.volume = realVolume;
+        sound.currentTime = 0;
       
+        // 사용자 제스처 안에서 play() 호출 → 오디오 잠금 해제.
+        // promise는 await하지 않음 (pause와의 경합으로 거부돼도 무시).
         const playPromise = sound.play();
         if (playPromise !== undefined) {
-          await playPromise;
+          playPromise
+            .then(() => {
+              // 잠금 해제 성공. 예약 시간 전이라 바로 멈춤.
+              sound.pause();
+              sound.currentTime = 0;
+            })
+            .catch(err => {
+              console.warn("unlock play 경고(무시 가능):", err);
+            });
         }
-      
-        // 재생이 시작되자마자 멈춰서, 예약 시간 전에는 소리가 안 들리게 함
-        sound.pause();
-        sound.currentTime = 0;
       
         audioUnlocked = true;
         return true;
       } catch (error) {
-        console.error("오디오 잠금 해제 실패:", error);
-        audioUnlocked = false;
-        return false;
+        console.error("오디오 잠금 해제 시도 중 예외(무시):", error);
+        audioUnlocked = true;
+        return true;   // 막지 않고 진행 (working 코드와 동일하게)
       }
     }
 
