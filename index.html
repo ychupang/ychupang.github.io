@@ -420,7 +420,7 @@
         <div class="beep-overlay" id="beepOverlay"></div>
         <div class="wave" id="wave"></div>
         <img id="mainImage" class="main-image" src="./stand.jpg" alt="main image" />
-        <div class="beep-text" id="beepText">BEEP</div>
+        <div class="beep-text" id="beepText">머리를 쳐!!</div>
       </div>
 
       <div class="running-info">
@@ -577,64 +577,29 @@
     async function unlockSoundOnUserClick(volume) {
       try {
         const realVolume = Math.min(Math.max(volume / 100, 0), 1);
-
-        /*
-          모바일 브라우저 핵심:
-          Start 버튼 클릭 직후, 사용자 제스처 안에서 실제 play()를 한 번 호출해야 함.
-          기존 코드의 sound.load()만으로는 모바일에서 나중에 setTimeout 안의 play()가 막힐 수 있음.
-        */
+      
+        // 모바일(특히 iOS): "음소거 안 된" play()를 사용자 제스처 안에서
+        // 한 번 호출해야 이후 setTimeout 안의 play()가 차단되지 않음.
         sound.pause();
         sound.currentTime = 0;
+        sound.muted = false;        // ← 핵심: 여기서 muted=true 면 잠금 해제 안 됨
         sound.volume = realVolume;
-        sound.muted = true;
-
+      
         const playPromise = sound.play();
-
         if (playPromise !== undefined) {
           await playPromise;
         }
-
+      
+        // 재생이 시작되자마자 멈춰서, 예약 시간 전에는 소리가 안 들리게 함
         sound.pause();
         sound.currentTime = 0;
-        sound.muted = false;
-        sound.volume = realVolume;
-
+      
         audioUnlocked = true;
         return true;
       } catch (error) {
         console.error("오디오 잠금 해제 실패:", error);
-
-        try {
-          /*
-            일부 모바일 브라우저에서 muted play가 잠금 해제로 인정되지 않을 때를 위한 fallback.
-            아주 짧게 실제 볼륨으로 play를 시도함.
-            이 경우 Start를 누르는 순간 아주 짧은 소리가 날 수 있음.
-          */
-          const realVolume = Math.min(Math.max(volume / 100, 0), 1);
-
-          sound.pause();
-          sound.currentTime = 0;
-          sound.muted = false;
-          sound.volume = realVolume;
-
-          const retryPromise = sound.play();
-
-          if (retryPromise !== undefined) {
-            await retryPromise;
-          }
-
-          setTimeout(() => {
-            sound.pause();
-            sound.currentTime = 0;
-          }, 80);
-
-          audioUnlocked = true;
-          return true;
-        } catch (retryError) {
-          console.error("오디오 fallback 실패:", retryError);
-          audioUnlocked = false;
-          return false;
-        }
+        audioUnlocked = false;
+        return false;
       }
     }
 
