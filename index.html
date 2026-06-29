@@ -359,8 +359,6 @@
 </head>
 
 <body>
-  <audio id="sound" src="./Beep.m4a" preload="auto" playsinline></audio>
-
   <div class="container" id="container">
     <div class="setup-view" id="setupView">
       <h1>랜덤으로 머리치기</h1>
@@ -443,6 +441,7 @@
     const MIN_GAP_SEC = 2;
     const STAND_IMAGE = "./stand.jpg";
     const MOVE_GIF = "./move.gif";
+    const SOUND_URL = "./Beep.m4a";
 
     let timers = [];
     let scheduleTimes = [];
@@ -455,9 +454,13 @@
     let isRunning = false;
     let infiniteMode = false;
     let effectTimer = null;
-    let audioUnlocked = false;
 
-    const sound = document.getElementById("sound");
+    /* ===== Web Audio API ===== */
+    let audioCtx = null;       // AudioContext (사용자 클릭 시 생성)
+    let gainNode = null;       // 볼륨 조절용
+    let audioBuffer = null;    // 디코딩된 사운드
+    let rawArrayBuffer = null; // 미리 받아둔 파일 바이트
+
     const container = document.getElementById("container");
 
     const startBtn = document.getElementById("startBtn");
@@ -484,8 +487,103 @@
 
     volumeSlider.addEventListener("input", () => {
       volumeValue.textContent = `${volumeSlider.value}%`;
-      sound.volume = Number(volumeSlider.value) / 100;
+      setGain(Number(volumeSlider.value));
     });
+
+    /* 페이지 로드 시 사운드 파일 바이트만 미리 받아둠 (디코딩은 클릭 후) */
+    prefetchAudioFile();
+
+    async function prefetchAudioFile() {
+      try {
+        const res = await fetch(SOUND_URL);
+        rawArrayBuffer = await res.arrayBuffer();
+      } catch (e) {
+        console.error("오디오 파일 다운로드 실패:", e);
+        rawArrayBuffer = null;
+      }
+    }
+
+    /* decodeAudioData를 콜백/프로미스 양쪽 모두 지원하는 형태로 래핑 (구형 iOS 대응) */
+    function decodeAudioDataCompat(ctx, arrayBuffer) {
+      return new Promise((resolve, reject) => {
+        ctx.decodeAudioData(arrayBuffer, resolve, reject);
+      });
+    }
+
+    function setGain(volume) {
+      const v = Math.min(Math.max(volume / 100, 0), 1);
+      if (gainNode) {
+        gainNode.gain.value = v;
+      }
+    }
+
+    /*
+      사용자 클릭(제스처) 안에서 호출.
+      - AudioContext를 제스처 안에서 생성 → iOS에서 가장 견고
+      - resume()으로 잠금 해제
+      - 무음 버퍼를 한 번 재생해 iOS 오디오 잠금 완전 해제 (소리 안 남)
+      - 사운드 디코딩
+      반환값: 실제로 재생 준비(디코딩 성공)가 됐는지 true/false
+    */
+    async function unlockAudio(volume) {
+      try {
+        if (!audioCtx) {
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          audioCtx = new Ctx();
+          gainNode = audioCtx.createGain();
+          gainNode.connect(audioCtx.destination);
+        }
+
+        if (audioCtx.state === "suspended") {
+          try { await audioCtx.resume(); } catch (e) {}
+        }
+
+        setGain(volume);
+
+        /* 무음 버퍼 재생: iOS 잠금 해제 트릭 (소리 안 들림) */
+        try {
+          const silent = audioCtx.createBuffer(1, 1, 22050);
+          const src = audioCtx.createBufferSource();
+          src.buffer = silent;
+          src.connect(audioCtx.destination);
+          src.start(0);
+        } catch (e) {}
+
+        /* 아직 디코딩 안 했으면 지금 디코딩 */
+        if (!audioBuffer) {
+          if (!rawArrayBuffer) {
+            /* 혹시 프리페치가 실패했으면 한 번 더 시도 */
+            await prefetchAudioFile();
+          }
+          if (rawArrayBuffer) {
+            /* decodeAudioData가 버퍼를 detach하므로 복사본 사용 */
+            const copy = rawArrayBuffer.slice(0);
+            audioBuffer = await decodeAudioDataCompat(audioCtx, copy);
+          }
+        }
+
+        return !!audioBuffer;
+      } catch (error) {
+        console.error("오디오 잠금 해제 실패:", error);
+        return !!audioBuffer;
+      }
+    }
+
+    /* 실제 비프음 재생: 매번 새 BufferSource 생성 */
+    function playBeep(volume) {
+      if (!audioCtx || !audioBuffer) return;
+
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
+
+      setGain(volume);
+
+      const source = audioCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(gainNode);
+      source.start(0);
+    }
 
     async function startRandomBeep() {
       stopRandomBeep(false);
@@ -501,13 +599,13 @@
         return;
       }
 
-      const audioReady = await unlockSoundOnUserClick(volume);
+      const audioReady = await unlockAudio(volume);
 
       if (!audioReady) {
         alert(
-          "Beep.m4a 파일을 재생할 수 없습니다.\n\n" +
+          "Beep.m4a 파일을 불러올 수 없습니다.\n\n" +
           "index.html과 Beep.m4a가 같은 폴더에 있는지 확인해주세요.\n" +
-          "모바일에서는 무음 모드도 확인해주세요."
+          "(로컬에서 파일을 직접 열면 동작하지 않습니다. github.io 같은 웹 주소로 접속해야 합니다.)"
         );
         return;
       }
@@ -572,38 +670,6 @@
       }
 
       return true;
-    }
-
-    async function unlockSoundOnUserClick(volume) {
-      try {
-        const realVolume = Math.min(Math.max(volume / 100, 0), 1);
-      
-        sound.muted = false;        // 음소거 없이
-        sound.volume = realVolume;
-        sound.currentTime = 0;
-      
-        // 사용자 제스처 안에서 play() 호출 → 오디오 잠금 해제.
-        // promise는 await하지 않음 (pause와의 경합으로 거부돼도 무시).
-        const playPromise = sound.play();
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => {
-              // 잠금 해제 성공. 예약 시간 전이라 바로 멈춤.
-              sound.pause();
-              sound.currentTime = 0;
-            })
-            .catch(err => {
-              console.warn("unlock play 경고(무시 가능):", err);
-            });
-        }
-      
-        audioUnlocked = true;
-        return true;
-      } catch (error) {
-        console.error("오디오 잠금 해제 시도 중 예외(무시):", error);
-        audioUnlocked = true;
-        return true;   // 막지 않고 진행 (working 코드와 동일하게)
-      }
     }
 
     function runCycle(startSec, endSec, count) {
@@ -678,26 +744,8 @@
     }
 
     function playSoundThenVisual(volume) {
-      sound.pause();
-      sound.currentTime = 0;
-      sound.muted = false;
-      sound.volume = Math.min(Math.max(volume / 100, 0), 1);
-
       triggerVisualEffect();
-
-      const playPromise = sound.play();
-
-      if (playPromise !== undefined) {
-        playPromise.catch(error => {
-          console.error("소리 재생 실패:", error);
-
-          /*
-            혹시 모바일에서 unlock이 풀리지 않았을 때,
-            효과는 계속 보이게 두고 소리 실패만 로그로 남김.
-          */
-          audioUnlocked = false;
-        });
-      }
+      playBeep(volume);
     }
 
     function triggerVisualEffect() {
@@ -774,10 +822,6 @@
         clearInterval(statusInterval);
         statusInterval = null;
       }
-
-      sound.pause();
-      sound.currentTime = 0;
-      sound.muted = false;
 
       document.body.classList.remove("flash");
       container.classList.remove("beep-active");
