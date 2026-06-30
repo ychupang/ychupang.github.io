@@ -98,27 +98,6 @@
       flex: 1;
     }
 
-    .volume-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-top: 8px;
-    }
-
-    input[type="range"] {
-      flex: 1;
-      accent-color: #3b82f6;
-      cursor: pointer;
-    }
-
-    .volume-value {
-      width: 48px;
-      text-align: right;
-      font-size: 14px;
-      color: #4b5563;
-      font-weight: 600;
-    }
-
     .buttons {
       display: flex;
       gap: 12px;
@@ -290,7 +269,7 @@
     .running-info {
       margin-top: 18px;
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 12px;
     }
 
@@ -310,7 +289,7 @@
     }
 
     .info-value {
-      font-size: 26px;
+      font-size: 22px;
       color: #111827;
       font-weight: 800;
     }
@@ -318,15 +297,12 @@
 </head>
 
 <body>
-  <audio id="sound" src="./Beep.m4a" preload="auto" playsinline></audio>
-
   <div class="container" id="container">
     <div class="setup-view" id="setupView">
       <h1>랜덤으로 머리치기</h1>
 
       <p class="desc">
-        시작 시간부터 종료 시간까지<br />
-        최소~최대 간격 사이에서 랜덤하게 신호가 나옵니다.
+        ⚔️ ⚔️ ⚔️ ⚔️<br />
       </p>
 
       <div class="row">
@@ -351,12 +327,6 @@
           <label for="maxInterval">최대 간격 (초)</label>
           <input id="maxInterval" type="number" min="0.1" step="0.1" value="10" />
         </div>
-      </div>
-
-      <label for="volume">볼륨</label>
-      <div class="volume-row">
-        <input id="volume" type="range" min="0" max="100" step="1" value="100" />
-        <div class="volume-value" id="volumeValue">100%</div>
       </div>
 
       <div class="buttons">
@@ -392,6 +362,11 @@
           <div class="info-label">경과 시간</div>
           <div class="info-value" id="secondsText">0.0초</div>
         </div>
+
+        <div class="info-card">
+          <div class="info-label">소모 칼로리</div>
+          <div class="info-value" id="caloriesText">0.00 kcal</div>
+        </div>
       </div>
 
       <button id="runningStopBtn">금헌</button>
@@ -401,6 +376,8 @@
   <script>
     const STAND_IMAGE = "./stand.jpg";
     const MOVE_GIF = "./move.gif";
+    const SOUND_URL = "./Beep.m4a";
+    const CALORIE_PER_HIT = 0.25;
 
     let startDelayMs = 5000;
     let endDelayMs = 60000;
@@ -417,15 +394,17 @@
     let beepedCount = 0;
     let startedAt = 0;
 
-    const sound = document.getElementById("sound");
+    /* ===== Web Audio API ===== */
+    let audioCtx = null;       // AudioContext (사용자 클릭 시 생성)
+    let audioBuffer = null;    // 디코딩된 사운드
+    let rawArrayBuffer = null; // 미리 받아둔 파일 바이트
+
     const container = document.getElementById("container");
 
     const startBtn = document.getElementById("startBtn");
     const runningStopBtn = document.getElementById("runningStopBtn");
 
     const statusBox = document.getElementById("status");
-    const volumeSlider = document.getElementById("volume");
-    const volumeValue = document.getElementById("volumeValue");
 
     const mainImage = document.getElementById("mainImage");
     const wave = document.getElementById("wave");
@@ -434,26 +413,103 @@
 
     const runCountText = document.getElementById("runCountText");
     const secondsText = document.getElementById("secondsText");
+    const caloriesText = document.getElementById("caloriesText");
     const modeBadge = document.getElementById("modeBadge");
 
     startBtn.addEventListener("click", startRandomBeep);
     runningStopBtn.addEventListener("click", () => stopRandomBeep(true));
 
-    volumeSlider.addEventListener("input", () => {
-      volumeValue.textContent = `${volumeSlider.value}%`;
-      sound.volume = Number(volumeSlider.value) / 100;
-    });
+    /* 페이지 로드 시 사운드 파일 바이트만 미리 받아둠 (디코딩은 클릭 후) */
+    prefetchAudioFile();
 
-    function startRandomBeep() {
+    async function prefetchAudioFile() {
+      try {
+        const res = await fetch(SOUND_URL);
+        rawArrayBuffer = await res.arrayBuffer();
+      } catch (e) {
+        console.error("오디오 파일 다운로드 실패:", e);
+        rawArrayBuffer = null;
+      }
+    }
+
+    /* decodeAudioData를 콜백/프로미스 양쪽 모두 지원하는 형태로 래핑 (구형 iOS 대응) */
+    function decodeAudioDataCompat(ctx, arrayBuffer) {
+      return new Promise((resolve, reject) => {
+        ctx.decodeAudioData(arrayBuffer, resolve, reject);
+      });
+    }
+
+    /*
+      사용자 클릭(제스처) 안에서 호출.
+      - AudioContext를 제스처 안에서 생성 → iOS에서 가장 견고
+      - resume()으로 잠금 해제
+      - 무음 버퍼를 한 번 재생해 iOS 오디오 잠금 완전 해제 (소리 안 남)
+      - 사운드 디코딩
+      반환값: 실제로 재생 준비(디코딩 성공)가 됐는지 true/false
+    */
+    async function unlockAudio() {
+      try {
+        if (!audioCtx) {
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          audioCtx = new Ctx();
+        }
+
+        if (audioCtx.state === "suspended") {
+          try { await audioCtx.resume(); } catch (e) {}
+        }
+
+        /* 무음 버퍼 재생: iOS 잠금 해제 트릭 (소리 안 들림) */
+        try {
+          const silent = audioCtx.createBuffer(1, 1, 22050);
+          const src = audioCtx.createBufferSource();
+          src.buffer = silent;
+          src.connect(audioCtx.destination);
+          src.start(0);
+        } catch (e) {}
+
+        /* 아직 디코딩 안 했으면 지금 디코딩 */
+        if (!audioBuffer) {
+          if (!rawArrayBuffer) {
+            /* 혹시 프리페치가 실패했으면 한 번 더 시도 */
+            await prefetchAudioFile();
+          }
+          if (rawArrayBuffer) {
+            /* decodeAudioData가 버퍼를 detach하므로 복사본 사용 */
+            const copy = rawArrayBuffer.slice(0);
+            audioBuffer = await decodeAudioDataCompat(audioCtx, copy);
+          }
+        }
+
+        return !!audioBuffer;
+      } catch (error) {
+        console.error("오디오 잠금 해제 실패:", error);
+        return !!audioBuffer;
+      }
+    }
+
+    /* 실제 비프음 재생: 매번 새 BufferSource 생성 */
+    function playBeep() {
+      if (!audioCtx || !audioBuffer) return;
+
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
+
+      const source = audioCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioCtx.destination);
+      source.start(0);
+    }
+
+    async function startRandomBeep() {
       stopRandomBeep(false);
 
       const startSec = Number(document.getElementById("startSec").value);
       const endSec = Number(document.getElementById("endSec").value);
       const minInterval = Number(document.getElementById("minInterval").value);
       const maxInterval = Number(document.getElementById("maxInterval").value);
-      const volume = Number(volumeSlider.value);
 
-      if (!validateInputs(startSec, endSec, minInterval, maxInterval, volume)) {
+      if (!validateInputs(startSec, endSec, minInterval, maxInterval)) {
         return;
       }
 
@@ -461,6 +517,17 @@
       endDelayMs = endSec * 1000;
       minDelayMs = minInterval * 1000;
       maxDelayMs = maxInterval * 1000;
+
+      const audioReady = await unlockAudio();
+
+      if (!audioReady) {
+        alert(
+          "Beep.m4a 파일을 불러올 수 없습니다.\n\n" +
+          "index.html과 Beep.m4a가 같은 폴더에 있는지 확인해주세요.\n" +
+          "(로컬에서 파일을 직접 열면 동작하지 않습니다. github.io 같은 웹 주소로 접속해야 합니다.)"
+        );
+        return;
+      }
 
       isRunning = true;
       beepedCount = 0;
@@ -471,11 +538,8 @@
       mainImage.src = STAND_IMAGE;
       runCountText.textContent = "0번";
       secondsText.textContent = "0.0초";
+      caloriesText.textContent = "0.00 kcal";
       modeBadge.textContent = "랜덤 신호 대기 중";
-
-      sound.volume = Math.min(Math.max(volume / 100, 0), 1);
-      sound.muted = false;
-      sound.load();
 
       statusInterval = setInterval(updateRunningView, 100);
 
@@ -491,7 +555,7 @@
       }, endDelayMs);
     }
 
-    function validateInputs(startSec, endSec, minInterval, maxInterval, volume) {
+    function validateInputs(startSec, endSec, minInterval, maxInterval) {
       if (
         !Number.isFinite(startSec) ||
         !Number.isFinite(endSec) ||
@@ -522,11 +586,6 @@
         return false;
       }
 
-      if (volume < 0 || volume > 100) {
-        alert("볼륨은 0부터 100 사이여야 합니다.");
-        return false;
-      }
-
       return true;
     }
 
@@ -540,23 +599,13 @@
         return;
       }
 
-      sound.pause();
-      sound.currentTime = 0;
-      sound.muted = false;
-      sound.volume = Math.min(Math.max(Number(volumeSlider.value) / 100, 0), 1);
-
-      const playPromise = sound.play();
+      playBeep();
 
       triggerVisualEffect();
 
-      if (playPromise !== undefined) {
-        playPromise.catch(error => {
-          console.error("소리 재생 실패:", error);
-        });
-      }
-
       beepedCount++;
       runCountText.textContent = `${beepedCount}번`;
+      caloriesText.textContent = `${(beepedCount * CALORIE_PER_HIT).toFixed(2)} kcal`;
 
       const randomInterval = Math.random() * (maxDelayMs - minDelayMs) + minDelayMs;
       const nextTime = elapsedMs + randomInterval;
@@ -609,6 +658,7 @@
 
       runCountText.textContent = `${beepedCount}번`;
       secondsText.textContent = `${totalElapsed.toFixed(1)}초`;
+      caloriesText.textContent = `${(beepedCount * CALORIE_PER_HIT).toFixed(2)} kcal`;
     }
 
     function finishTimer() {
@@ -627,10 +677,6 @@
       isRunning = false;
 
       clearAllTimers();
-
-      sound.pause();
-      sound.currentTime = 0;
-      sound.muted = false;
 
       document.body.classList.remove("flash");
       container.classList.remove("beep-active");
