@@ -334,7 +334,7 @@
       </div>
 
       <div class="visual-box">
-        <img class="main-image" src="./stand.jpg" alt="stand image" />
+        <img class="main-image" id="setupImage" src="./stand.jpg" alt="stand image" />
       </div>
 
       <div class="status" id="status">
@@ -375,9 +375,21 @@
 
   <script>
     const STAND_IMAGE = "./stand.jpg";
+    const PIG_IMAGE = "./pig.jpg";
+    const FIRE_IMAGE = "./fire.jpg";
     const MOVE_GIF = "./move.gif";
     const SOUND_URL = "./Beep.m4a";
     const CALORIE_PER_HIT = 0.25;
+
+    /* 총 시간(종료 시간)에 따라 결정되는 휴식 상태 메인 이미지 */
+    let baseImage = STAND_IMAGE;
+
+    /* 1분 미만: pig / 1분 이상 5분 미만: stand / 5분 이상: fire */
+    function pickBaseImage(totalSec) {
+      if (totalSec < 60) return PIG_IMAGE;
+      if (totalSec < 300) return STAND_IMAGE;
+      return FIRE_IMAGE;
+    }
 
     let startDelayMs = 5000;
     let endDelayMs = 60000;
@@ -416,11 +428,39 @@
     const caloriesText = document.getElementById("caloriesText");
     const modeBadge = document.getElementById("modeBadge");
 
+    const setupImage = document.getElementById("setupImage");
+    const startSecInput = document.getElementById("startSec");
+    const endSecInput = document.getElementById("endSec");
+
+    /* 설정 화면 미리보기: 총 시간(종료 - 시작)에 따라 그림 즉시 갱신 */
+    function updateSetupPreview() {
+      const startSec = Number(startSecInput.value);
+      const endSec = Number(endSecInput.value);
+      const totalSec = endSec - startSec;
+      if (Number.isFinite(totalSec) && totalSec > 0) {
+        setupImage.src = pickBaseImage(totalSec);
+      }
+    }
+
+    startSecInput.addEventListener("input", updateSetupPreview);
+    endSecInput.addEventListener("input", updateSetupPreview);
+    updateSetupPreview();
+
     startBtn.addEventListener("click", startRandomBeep);
     runningStopBtn.addEventListener("click", () => stopRandomBeep(true));
 
     /* 페이지 로드 시 사운드 파일 바이트만 미리 받아둠 (디코딩은 클릭 후) */
     prefetchAudioFile();
+
+    /* 이미지도 미리 받아 캐시에 올려둠 → 새로고침 없이 즉시 전환 */
+    preloadImages();
+
+    function preloadImages() {
+      [STAND_IMAGE, PIG_IMAGE, FIRE_IMAGE, MOVE_GIF].forEach((src) => {
+        const img = new Image();
+        img.src = src;
+      });
+    }
 
     async function prefetchAudioFile() {
       try {
@@ -518,6 +558,8 @@
       minDelayMs = minInterval * 1000;
       maxDelayMs = maxInterval * 1000;
 
+      baseImage = pickBaseImage(endSec - startSec);
+
       const audioReady = await unlockAudio();
 
       if (!audioReady) {
@@ -535,7 +577,7 @@
 
       container.classList.add("running");
 
-      mainImage.src = STAND_IMAGE;
+      mainImage.src = baseImage;
       runCountText.textContent = "0번";
       secondsText.textContent = "0.0초";
       caloriesText.textContent = "0.00 kcal";
@@ -647,7 +689,7 @@
         wave.classList.remove("active");
         beepOverlay.classList.remove("active");
         beepText.classList.remove("active");
-        mainImage.src = STAND_IMAGE;
+        mainImage.src = baseImage;
       }, 1000);
     }
 
