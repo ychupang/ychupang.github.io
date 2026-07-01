@@ -1,4 +1,4 @@
-  <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
@@ -225,18 +225,6 @@
       opacity: 1;
     }
 
-    .status {
-      margin-top: 20px;
-      padding: 16px;
-      border-radius: 14px;
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      font-size: 14px;
-      line-height: 1.6;
-      color: #374151;
-      text-align: center;
-    }
-
     .setup-view {
       display: block;
     }
@@ -251,19 +239,6 @@
 
     .container.running .running-view {
       display: block;
-    }
-
-    .mode-badge {
-      margin-bottom: 14px;
-      padding: 10px 14px;
-      border-radius: 999px;
-      background: #111827;
-      color: #ffffff;
-      text-align: center;
-      font-size: 14px;
-      font-weight: 800;
-      letter-spacing: 0.02em;
-      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
     }
 
     .running-info {
@@ -336,15 +311,9 @@
       <div class="visual-box">
         <img class="main-image" id="setupImage" src="./stand.jpg" alt="stand image" />
       </div>
-
-      <div class="status" id="status">
-        대기 중입니다.
-      </div>
     </div>
 
     <div class="running-view" id="runningView">
-      <div class="mode-badge" id="modeBadge">랜덤 신호 대기 중</div>
-
       <div class="visual-box">
         <div class="beep-overlay" id="beepOverlay"></div>
         <div class="wave" id="wave"></div>
@@ -381,10 +350,7 @@
     const SOUND_URL = "./Beep.m4a";
     const CALORIE_PER_HIT = 0.25;
 
-    /* 총 시간(종료 시간)에 따라 결정되는 휴식 상태 메인 이미지 */
-    let baseImage = STAND_IMAGE;
-
-    /* 1분 미만: pig / 1분 이상 5분 미만: stand / 5분 이상: fire */
+    /* 설정 화면 미리보기용: 1분 미만 pig / 1~5분 stand / 5분 이상 fire */
     function pickBaseImage(totalSec) {
       if (totalSec < 60) return PIG_IMAGE;
       if (totalSec < 300) return STAND_IMAGE;
@@ -416,8 +382,6 @@
     const startBtn = document.getElementById("startBtn");
     const runningStopBtn = document.getElementById("runningStopBtn");
 
-    const statusBox = document.getElementById("status");
-
     const mainImage = document.getElementById("mainImage");
     const wave = document.getElementById("wave");
     const beepOverlay = document.getElementById("beepOverlay");
@@ -426,7 +390,6 @@
     const runCountText = document.getElementById("runCountText");
     const secondsText = document.getElementById("secondsText");
     const caloriesText = document.getElementById("caloriesText");
-    const modeBadge = document.getElementById("modeBadge");
 
     const setupImage = document.getElementById("setupImage");
     const startSecInput = document.getElementById("startSec");
@@ -558,8 +521,6 @@
       minDelayMs = minInterval * 1000;
       maxDelayMs = maxInterval * 1000;
 
-      baseImage = pickBaseImage(endSec - startSec);
-
       const audioReady = await unlockAudio();
 
       if (!audioReady) {
@@ -577,17 +538,15 @@
 
       container.classList.add("running");
 
-      mainImage.src = baseImage;
+      mainImage.src = STAND_IMAGE;
       runCountText.textContent = "0번";
       secondsText.textContent = "0.0초";
       caloriesText.textContent = "0.00 kcal";
-      modeBadge.textContent = "랜덤 신호 대기 중";
 
       statusInterval = setInterval(updateRunningView, 100);
 
       startTimerId = setTimeout(() => {
         if (!isRunning) return;
-        modeBadge.textContent = "랜덤 신호 진행 중";
         playSoundAndVisual();
       }, startDelayMs);
 
@@ -689,7 +648,7 @@
         wave.classList.remove("active");
         beepOverlay.classList.remove("active");
         beepText.classList.remove("active");
-        mainImage.src = baseImage;
+        mainImage.src = STAND_IMAGE;
       }, 1000);
     }
 
@@ -737,7 +696,6 @@
       container.classList.remove("running");
 
       mainImage.src = STAND_IMAGE;
-      statusBox.innerHTML = message;
     }
 
     function clearAllTimers() {
