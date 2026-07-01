@@ -283,12 +283,12 @@
       <div class="row">
         <div>
           <label for="startSec">시작 시간 (초)</label>
-          <input id="startSec" type="number" min="0" step="1" value="0" />
+          <input id="startSec" type="number" min="0" step="1" value="5" />
         </div>
 
         <div>
           <label for="endSec">종료 시간 (초)</label>
-          <input id="endSec" type="number" min="1" step="1" value="60" />
+          <input id="endSec" type="number" min="1" step="1" value="65" />
         </div>
       </div>
 
@@ -348,7 +348,14 @@
     const FIRE_IMAGE = "./fire.jpg";
     const MOVE_GIF = "./move.gif";
     const SOUND_URL = "./Beep.m4a";
-    const CALORIE_PER_HIT = 0.25;
+    const CALORIE_PER_HIT = 2;
+    const CALORIE_PER_SECOND = 0.05;
+
+    /* 총 칼로리 = 머리치기 횟수 × 0.25 + 경과 시간(초) × 0.01 */
+    function computeCalories() {
+      const elapsedSec = (performance.now() - startedAt) / 1000;
+      return beepedCount * CALORIE_PER_HIT + elapsedSec * CALORIE_PER_SECOND;
+    }
 
     /* 설정 화면 미리보기용: 1분 미만 pig / 1~5분 stand / 5분 이상 fire */
     function pickBaseImage(totalSec) {
@@ -606,7 +613,7 @@
 
       beepedCount++;
       runCountText.textContent = `${beepedCount}번`;
-      caloriesText.textContent = `${(beepedCount * CALORIE_PER_HIT).toFixed(2)} kcal`;
+      caloriesText.textContent = `${computeCalories().toFixed(2)} kcal`;
 
       const randomInterval = Math.random() * (maxDelayMs - minDelayMs) + minDelayMs;
       const nextTime = elapsedMs + randomInterval;
@@ -659,7 +666,7 @@
 
       runCountText.textContent = `${beepedCount}번`;
       secondsText.textContent = `${totalElapsed.toFixed(1)}초`;
-      caloriesText.textContent = `${(beepedCount * CALORIE_PER_HIT).toFixed(2)} kcal`;
+      caloriesText.textContent = `${computeCalories().toFixed(2)} kcal`;
     }
 
     function finishTimer() {
